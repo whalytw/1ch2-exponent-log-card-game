@@ -1,13 +1,14 @@
 (() => {
   "use strict";
-  const STORAGE_KEY = "exponent-log-card-arena-settings-v2";
-  const DEFAULTS = { exp: true, log: true, easyCount: 4, mediumCount: 4, hardCount: 2, easyCandidates: 8, mediumCandidates: 8, hardCandidates: 8, easySeconds: 30, mediumSeconds: 45, hardSeconds: 60 };
+  const STORAGE_KEY = "exponent-log-card-arena-settings-v3";
+  const PREVIOUS_STORAGE_KEY = "exponent-log-card-arena-settings-v2";
+  const DEFAULTS = { exp: true, log: true, easyCount: 6, mediumCount: 4, hardCount: 0, easyCandidates: 8, mediumCandidates: 8, hardCandidates: 8, easySeconds: 30, mediumSeconds: 45, hardSeconds: 60, seatStart: 1, seatEnd: 30 };
   const LEVELS = { easy: { name: "簡單", size: 2 }, medium: { name: "中等", size: 3 }, hard: { name: "困難", size: 4 } };
   const LABELS = ["左區", "中區", "右區"];
   const $lanes = document.getElementById("lanes");
   const $dialog = document.getElementById("settingsDialog");
   const $form = document.getElementById("settingsForm");
-  const lanes = LABELS.map(() => ({ phase: "idle", player: "", deck: [], index: -1, score: 0, correct: 0, selected: [], deadline: 0, remaining: 0, message: "", feedbackTimer: null, hintTimer: null }));
+  const lanes = LABELS.map(() => ({ phase: "idle", player: "", seatNumber: null, deck: [], index: -1, score: 0, correct: 0, selected: [], deadline: 0, remaining: 0, message: "", feedbackTimer: null, hintTimer: null }));
   const random = (n) => Math.floor(Math.random() * n);
   const pick = (array) => array[random(array.length)];
   const shuffle = (input) => { const a = [...input]; for (let i = a.length - 1; i > 0; i--) { const j = random(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -15,11 +16,20 @@
 
   function readSettings() {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      const current = localStorage.getItem(STORAGE_KEY);
+      const previous = current ? null : localStorage.getItem(PREVIOUS_STORAGE_KEY);
+      const saved = JSON.parse(current || previous || "null");
       if (!saved || typeof saved !== "object") return { ...DEFAULTS };
       const values = { ...DEFAULTS };
       for (const key of Object.keys(DEFAULTS)) if (typeof saved[key] === typeof DEFAULTS[key]) values[key] = saved[key];
+      // Migrate last version's untouched 4/4/2 default while preserving custom counts.
+      if (previous && saved.easyCount === 4 && saved.mediumCount === 4 && saved.hardCount === 2) {
+        values.easyCount = 6; values.mediumCount = 4; values.hardCount = 0;
+      }
       if (!values.exp && !values.log) return { ...DEFAULTS };
+      if (!Number.isInteger(values.seatStart) || !Number.isInteger(values.seatEnd) || values.seatStart < 1 || values.seatEnd > 99 || values.seatStart > values.seatEnd) {
+        values.seatStart = 1; values.seatEnd = 30;
+      }
       return values;
     } catch { return { ...DEFAULTS }; }
   }
@@ -197,9 +207,11 @@
     const lane = lanes[index];
     let body;
     if (lane.phase === "idle") {
-      body = `<section class="idle"><div class="big-mark">0${index + 1}</div><h2>準備接力挑戰</h2><p>輸入姓名或座號，按開始後獨立作答。<br>每題選滿卡片，再鎖定答案。</p><label class="name-label" for="player-${index}">姓名或座號（可留空）</label><input id="player-${index}" class="player-input" maxlength="16" placeholder="例如：12 號" autocomplete="off"><button type="button" class="primary-button" data-action="start">開始遊戲</button></section>`;
+      const seats = Array.from({ length: settings.seatEnd - settings.seatStart + 1 }, (_, offset) => settings.seatStart + offset);
+      const options = `<option value="">不選座號</option>${seats.map(n => `<option value="${n}">${n} 號</option>`).join("")}`;
+      body = `<section class="idle"><div class="big-mark">0${index + 1}</div><h2>準備接力挑戰</h2><p>可選座號，也可直接開始。<br>每題選滿卡片，再鎖定答案。</p><label class="name-label" for="player-${index}">座號（可留空）</label><select id="player-${index}" class="player-input" aria-label="${LABELS[index]}座號">${options}</select><button type="button" class="primary-button" data-action="start">開始遊戲</button></section>`;
     } else if (lane.phase === "finished") {
-      body = `<section class="finished"><div class="big-mark">✓</div><h2>${escapeText(lane.player)} 完成挑戰</h2><div class="result-score">${lane.score}</div><div class="result-caption">總分 · 答對 ${lane.correct}／${lane.deck.length} 題</div><p>把這一區交給下一位同學。</p><button type="button" class="primary-button" data-action="reset">下一位學生</button></section>`;
+      body = `<section class="finished"><div class="big-mark">✓</div><h2>完成挑戰</h2>${lane.seatNumber == null ? "" : `<div class="result-seat">座號 ${lane.seatNumber} 號</div>`}<div class="result-score">${lane.score}</div><div class="result-caption">總分 · 答對 ${lane.correct}／${lane.deck.length} 題</div><p>把這一區交給下一位同學。</p><button type="button" class="primary-button" data-action="reset">下一位學生</button></section>`;
     } else {
       const q = currentQuestion(lane), values = selectedValues(lane), filled = lane.selected.filter(x => x != null).length;
       const cards = q.cards.map((card, cardIndex) => `<button type="button" class="card ${lane.selected.includes(cardIndex) ? "selected" : ""}" data-action="card" data-card="${cardIndex}" ${lane.phase === "feedback" ? "disabled" : ""} aria-label="${q.kind === "exp" ? `${q.base} 的 ${card.value / 2} 次方` : `log ${card.value}`}${lane.selected.includes(cardIndex) ? "，已選取，點擊取消" : ""}">${cardMarkup(q, card.value)}</button>`).join("");
@@ -234,8 +246,11 @@
   function startLane(index) {
     const lane = lanes[index];
     if (lane.phase !== "idle") return;
-    const input = $lanes.querySelector(`[data-lane="${index}"] .player-input`);
-    lane.player = input.value.trim().slice(0, 16) || `${LABELS[index]}同學`;
+    const selection = $lanes.querySelector(`[data-lane="${index}"] .player-input`).value;
+    const seatNumber = selection === "" ? null : Number(selection);
+    if (seatNumber != null && (!Number.isInteger(seatNumber) || seatNumber < settings.seatStart || seatNumber > settings.seatEnd)) return;
+    lane.seatNumber = seatNumber;
+    lane.player = seatNumber == null ? `${LABELS[index]}同學` : `${seatNumber} 號`;
     try { lane.deck = makeDeck({ ...settings }); }
     catch (error) { window.alert(`題目產生失敗：${error.message}`); return; }
     lane.score = 0; lane.correct = 0; lane.index = -1;
@@ -279,19 +294,13 @@
     if (!container) return;
     const index = Number(container.dataset.lane), action = button.dataset.action;
     if (action === "start") startLane(index);
-    else if (action === "reset" && lanes[index].phase === "finished") { lanes[index].phase = "idle"; lanes[index].player = ""; renderLane(index); }
+    else if (action === "reset" && lanes[index].phase === "finished") { lanes[index].phase = "idle"; lanes[index].player = ""; lanes[index].seatNumber = null; renderLane(index); }
     else if (action === "card") changeCard(index, Number(button.dataset.card));
     else if (action === "unselect" && lanes[index].phase === "play") {
       const slotIndex = Number(button.dataset.slot);
       if (lanes[index].selected[slotIndex] != null) { lanes[index].selected[slotIndex] = null; lanes[index].message = ""; renderLane(index); }
     } else if (action === "lock") finishQuestion(index);
   });
-  $lanes.addEventListener("keydown", event => {
-    if (event.key === "Enter" && event.target.classList.contains("player-input")) {
-      event.preventDefault(); startLane(Number(event.target.closest(".lane").dataset.lane));
-    }
-  });
-
   setInterval(() => {
     const now = performance.now();
     lanes.forEach((lane, index) => {
@@ -324,6 +333,7 @@
     if (candidate.easyCount + candidate.mediumCount + candidate.hardCount < 1) return "總題數至少為 1 題。";
     if (["easyCandidates", "mediumCandidates", "hardCandidates"].some(k => !Number.isInteger(candidate[k]) || candidate[k] < 8 || candidate[k] > 24)) return "候選卡片張數請填 8 至 24 的整數。";
     if (["easySeconds", "mediumSeconds", "hardSeconds"].some(k => !Number.isInteger(candidate[k]) || candidate[k] < 5 || candidate[k] > 180)) return "秒數請填 5 至 180 的整數。";
+    if (!Number.isInteger(candidate.seatStart) || !Number.isInteger(candidate.seatEnd) || candidate.seatStart < 1 || candidate.seatEnd > 99 || candidate.seatStart > candidate.seatEnd) return "座號範圍請設為 1 至 99，且起始座號不可大於結束座號。";
     return "";
   }
   function saveSettings(candidate) {
@@ -332,13 +342,14 @@
     settings = candidate;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* private browsing can disable storage */ }
     updateSummary();
+    lanes.forEach((lane, index) => { if (lane.phase === "idle") renderLane(index); });
   }
   $form.addEventListener("input", updateTotal);
   $form.addEventListener("submit", event => {
     event.preventDefault();
     const form = $form.elements;
     const candidate = { exp: form.exp.checked, log: form.log.checked };
-    for (const key of ["easyCount", "mediumCount", "hardCount", "easyCandidates", "mediumCandidates", "hardCandidates", "easySeconds", "mediumSeconds", "hardSeconds"]) candidate[key] = Number(form[key].value);
+    for (const key of ["easyCount", "mediumCount", "hardCount", "easyCandidates", "mediumCandidates", "hardCandidates", "easySeconds", "mediumSeconds", "hardSeconds", "seatStart", "seatEnd"]) candidate[key] = Number(form[key].value);
     try { saveSettings(candidate); $dialog.close(); }
     catch (error) { document.getElementById("settingsError").textContent = error.message; }
   });
@@ -380,17 +391,17 @@
       {
         name: "read_game_state", title: "查看遊戲狀態", description: "讀取教師設定、三個區域的進度和目前題目的候選卡片。",
         inputSchema: { type: "object", properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true },
-        execute() { return { settings: { ...settings }, lanes: lanes.map((lane, index) => ({ lane: ["left", "middle", "right"][index], phase: lane.phase, player: lane.player, score: lane.score, question: lane.phase === "play" ? { number: lane.index + 1, level: currentQuestion(lane).level, kind: currentQuestion(lane).kind, target: currentQuestion(lane).kind === "exp" ? `${currentQuestion(lane).base}^${currentQuestion(lane).targetUnits / 2}` : `log ${currentQuestion(lane).target}`, signs: currentQuestion(lane).signs, cards: currentQuestion(lane).cards.map(c => ({ id: c.id, value: currentQuestion(lane).kind === "exp" ? `${currentQuestion(lane).base}^${c.value / 2}` : `log ${c.value}` })), selected: [...lane.selected], secondsRemaining: lane.remaining } : null })) }; }
+        execute() { return { settings: { ...settings }, lanes: lanes.map((lane, index) => ({ lane: ["left", "middle", "right"][index], phase: lane.phase, seatNumber: lane.seatNumber, score: lane.score, question: lane.phase === "play" ? { number: lane.index + 1, level: currentQuestion(lane).level, kind: currentQuestion(lane).kind, target: currentQuestion(lane).kind === "exp" ? `${currentQuestion(lane).base}^${currentQuestion(lane).targetUnits / 2}` : `log ${currentQuestion(lane).target}`, signs: currentQuestion(lane).signs, cards: currentQuestion(lane).cards.map(c => ({ id: c.id, value: currentQuestion(lane).kind === "exp" ? `${currentQuestion(lane).base}^${c.value / 2}` : `log ${c.value}` })), selected: [...lane.selected], secondsRemaining: lane.remaining } : null })) }; }
       },
       {
-        name: "configure_game", title: "調整教師設定", description: "設定指數與對數題型、各難度題數與每題秒數，供下一位學生使用。",
-        inputSchema: { type: "object", properties: { exp: { type: "boolean" }, log: { type: "boolean" }, easyCount: { type: "integer" }, mediumCount: { type: "integer" }, hardCount: { type: "integer" }, easyCandidates: { type: "integer" }, mediumCandidates: { type: "integer" }, hardCandidates: { type: "integer" }, easySeconds: { type: "integer" }, mediumSeconds: { type: "integer" }, hardSeconds: { type: "integer" } }, required: Object.keys(DEFAULTS), additionalProperties: false },
+        name: "configure_game", title: "調整教師設定", description: "設定題型、各難度題數、候選卡片、秒數及座號範圍，供下一位學生使用。",
+        inputSchema: { type: "object", properties: { exp: { type: "boolean" }, log: { type: "boolean" }, easyCount: { type: "integer" }, mediumCount: { type: "integer" }, hardCount: { type: "integer" }, easyCandidates: { type: "integer" }, mediumCandidates: { type: "integer" }, hardCandidates: { type: "integer" }, easySeconds: { type: "integer" }, mediumSeconds: { type: "integer" }, hardSeconds: { type: "integer" }, seatStart: { type: "integer" }, seatEnd: { type: "integer" } }, required: Object.keys(DEFAULTS), additionalProperties: false },
         execute(input) { saveSettings({ ...input }); return { settings: { ...settings } }; }
       },
       {
-        name: "start_student_round", title: "開始學生回合", description: "在指定區域以學生姓名或座號開始新回合。",
-        inputSchema: { type: "object", properties: { lane: { type: "string", enum: ["left", "middle", "right"] }, player: { type: "string" } }, required: ["lane", "player"], additionalProperties: false },
-        execute(input) { const index = laneIndex(input.lane); if (lanes[index].phase !== "idle") throw new Error("該區尚未準備好新回合"); $lanes.querySelector(`[data-lane="${index}"] .player-input`).value = String(input.player).slice(0, 16); startLane(index); return { lane: input.lane, player: lanes[index].player, questionCount: lanes[index].deck.length }; }
+        name: "start_student_round", title: "開始學生回合", description: "在指定區域選擇座號或留空，並開始新回合。",
+        inputSchema: { type: "object", properties: { lane: { type: "string", enum: ["left", "middle", "right"] }, seatNumber: { type: "integer" } }, required: ["lane"], additionalProperties: false },
+        execute(input) { const index = laneIndex(input.lane); if (lanes[index].phase !== "idle") throw new Error("該區尚未準備好新回合"); if (input.seatNumber != null && (!Number.isInteger(input.seatNumber) || input.seatNumber < settings.seatStart || input.seatNumber > settings.seatEnd)) throw new Error("座號超出教師設定範圍"); $lanes.querySelector(`[data-lane="${index}"] .player-input`).value = input.seatNumber == null ? "" : String(input.seatNumber); startLane(index); return { lane: input.lane, seatNumber: lanes[index].seatNumber, questionCount: lanes[index].deck.length }; }
       },
       {
         name: "submit_card_answer", title: "鎖定卡片答案", description: "按照方框順序選擇候選卡片的 ID，並鎖定目前題目的答案。",
