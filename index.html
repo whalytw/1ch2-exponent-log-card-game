@@ -30,11 +30,11 @@
         <label><input type="checkbox" name="log" checked> 常用對數</label>
       </fieldset>
       <div class="settings-grid">
-        <div class="setting-row"><span class="level-pill easy">簡單</span><label>題數<input type="number" name="easyCount" min="0" max="30" value="4" inputmode="numeric"></label><label>每題秒數<input type="number" name="easySeconds" min="5" max="180" value="20" inputmode="numeric"></label></div>
-        <div class="setting-row"><span class="level-pill medium">中等</span><label>題數<input type="number" name="mediumCount" min="0" max="30" value="4" inputmode="numeric"></label><label>每題秒數<input type="number" name="mediumSeconds" min="5" max="180" value="40" inputmode="numeric"></label></div>
-        <div class="setting-row"><span class="level-pill hard">困難</span><label>題數<input type="number" name="hardCount" min="0" max="30" value="2" inputmode="numeric"></label><label>每題秒數<input type="number" name="hardSeconds" min="5" max="180" value="60" inputmode="numeric"></label></div>
+        <div class="setting-row"><span class="level-pill easy">簡單</span><label>題數<input type="number" name="easyCount" min="0" max="30" value="4" inputmode="numeric"></label><label>候選卡片<input type="number" name="easyCandidates" min="8" max="24" value="12" inputmode="numeric"></label><label>每題秒數<input type="number" name="easySeconds" min="5" max="180" value="20" inputmode="numeric"></label></div>
+        <div class="setting-row"><span class="level-pill medium">中等</span><label>題數<input type="number" name="mediumCount" min="0" max="30" value="4" inputmode="numeric"></label><label>候選卡片<input type="number" name="mediumCandidates" min="8" max="24" value="12" inputmode="numeric"></label><label>每題秒數<input type="number" name="mediumSeconds" min="5" max="180" value="40" inputmode="numeric"></label></div>
+        <div class="setting-row"><span class="level-pill hard">困難</span><label>題數<input type="number" name="hardCount" min="0" max="30" value="2" inputmode="numeric"></label><label>候選卡片<input type="number" name="hardCandidates" min="8" max="24" value="12" inputmode="numeric"></label><label>每題秒數<input type="number" name="hardSeconds" min="5" max="180" value="60" inputmode="numeric"></label></div>
       </div>
-      <p class="setting-help">簡單選 2 張／12 張候選；中等選 3 張／16 張候選；困難選 4 張／20 張候選。每題至少有 3 種不同的正確組合。計分為答對當下的剩餘秒數。</p>
+      <p class="setting-help">簡單選 2 張、中等選 3 張、困難選 4 張。各難度可分別設定 8～24 張候選卡片，預設皆為 12 張。每題至少有 3 種不同的正確組合。計分為答對當下的剩餘秒數。</p>
       <p id="settingsError" class="settings-error" role="alert"></p>
       <div class="dialog-actions"><span id="questionTotal">共 10 題</span><button class="save-button" type="submit">儲存設定</button></div>
     </form>
