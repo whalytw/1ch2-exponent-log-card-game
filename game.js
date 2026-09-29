@@ -1,7 +1,7 @@
 (() => {
   "use strict";
-  const STORAGE_KEY = "exponent-log-card-arena-settings-v1";
-  const DEFAULTS = { exp: true, log: true, easyCount: 4, mediumCount: 4, hardCount: 2, easyCandidates: 12, mediumCandidates: 12, hardCandidates: 12, easySeconds: 20, mediumSeconds: 40, hardSeconds: 60 };
+  const STORAGE_KEY = "exponent-log-card-arena-settings-v2";
+  const DEFAULTS = { exp: true, log: true, easyCount: 4, mediumCount: 4, hardCount: 2, easyCandidates: 8, mediumCandidates: 8, hardCandidates: 8, easySeconds: 30, mediumSeconds: 45, hardSeconds: 60 };
   const LEVELS = { easy: { name: "簡單", size: 2 }, medium: { name: "中等", size: 3 }, hard: { name: "困難", size: 4 } };
   const LABELS = ["左區", "中區", "右區"];
   const $lanes = document.getElementById("lanes");
@@ -26,9 +26,9 @@
   let settings = readSettings();
 
   function powerMarkup(base, units) {
-    let power;
-    if (units % 2 === 0) power = String(units / 2);
-    else power = `${units < 0 ? "−" : ""}${Math.abs(units)}/2`;
+    if (units % 2 !== 0) throw new Error("指數必須為整數");
+    const exponent = units / 2;
+    const power = exponent < 0 ? `−${-exponent}` : String(exponent);
     return `<span class="math-term">${base}<sup>${power}</sup></span>`;
   }
   const logMarkup = (n) => `<span class="math-term">log&nbsp;${n}</span>`;
@@ -68,13 +68,12 @@
     const size = LEVELS[level].size;
     const form = size === 2 ? pick(["product", "quotient"]) : size === 3 ? pick(["product", "quotient"]) : pick(["product", "quotient"]);
     const signs = form === "product" ? Array(size).fill(1) : size === 2 ? [1, -1] : size === 3 ? [1, 1, -1] : [1, 1, -1, -1];
-    const half = level !== "easy" && Math.random() < (level === "hard" ? .38 : .22);
     const base = pick(level === "hard" ? [2, 3, 5, 7] : [2, 3, 5]);
     for (let attempt = 0; attempt < 30; attempt++) {
       const low = level === "easy" ? -3 : level === "medium" ? -6 : -8;
       const high = Math.max(level === "easy" ? 14 : level === "medium" ? 16 : 19, low + candidateCount + 3);
-      const universe = Array.from({ length: (high - low + 1) * (half ? 2 : 1) }, (_, i) => half ? low * 2 + i : (low + i) * 2);
-      const targetUnits = half ? 2 * (random(13) - 2) + 1 : 2 * (level === "easy" ? random(10) + (form === "quotient" ? -3 : 3) : random(18) - 5);
+      const universe = Array.from({ length: high - low + 1 }, (_, i) => (low + i) * 2);
+      const targetUnits = 2 * (level === "easy" ? random(10) + (form === "quotient" ? -3 : 3) : random(18) - 5);
       const values = shuffle(universe).slice(0, candidateCount);
       const q = { kind: "exp", level, base, form, signs, targetUnits, cards: shuffle(values).map((value, id) => ({ id, value })) };
       q.solutions = findSolutions(q);
@@ -345,12 +344,33 @@
   });
   document.getElementById("settingsButton").addEventListener("click", showSettings);
   document.getElementById("closeSettings").addEventListener("click", () => $dialog.close());
-  document.getElementById("fullscreenButton").addEventListener("click", async () => {
-    try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
+  const fullscreenButton = document.getElementById("fullscreenButton");
+  const updateFullscreenLabel = () => {
+    fullscreenButton.textContent = document.fullscreenElement ? "⛶ 離開全螢幕" : "⛶ 全螢幕";
+  };
+  document.addEventListener("fullscreenchange", updateFullscreenLabel);
+  fullscreenButton.addEventListener("click", async () => {
+    try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen({ navigationUI: "hide" }); }
     catch { /* browser may restrict full screen */ }
   });
+  // Edge treats a touch-and-hold as a right click; prevent the browser menu on the game surface.
+  document.addEventListener("contextmenu", event => {
+    if (event.target instanceof Element && event.target.closest(".app")) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+  document.addEventListener("dragstart", event => {
+    if (event.target instanceof Element && event.target.closest(".lanes")) event.preventDefault();
+  }, true);
+  document.addEventListener("keydown", event => {
+    if (event.ctrlKey && !event.altKey && event.key?.toLowerCase() === "u" && !(event.target instanceof Element && event.target.closest("input,textarea"))) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
 
-  updateSummary(); renderAll();
+  updateFullscreenLabel(); updateSummary(); renderAll();
 
   // Supported browsers can offer the same game controls to an assistant through WebMCP.
   if (document.modelContext?.registerTool) {
